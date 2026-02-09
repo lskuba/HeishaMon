@@ -1,0 +1,138 @@
+# Minimal ESPHome configuration for Panasonic Aquarea Heat Pump
+# This is a simplified version with only essential entities
+# 
+# For full configuration, see heishamon.yaml
+
+substitutions:
+  device_name: heishamon
+  friendly_name: Panasonic Aquarea
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp8266:
+  board: d1_mini
+
+logger:
+  baud_rate: 0
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# UART for heat pump
+uart:
+  id: hp_uart
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 9600
+  data_bits: 8
+  parity: EVEN
+  stop_bits: 1
+
+# External component
+external_components:
+  - source:
+      type: local
+      path: components
+
+# Heat pump component
+panasonic_aquarea:
+  id: aquarea
+  uart_id: hp_uart
+  update_interval: 5s
+
+# ============ CLIMATE ENTITIES ============
+
+climate:
+  # House heating/cooling
+  - platform: panasonic_aquarea
+    zone1:
+      name: "House"
+      
+  # Hot water
+  - platform: panasonic_aquarea
+    dhw:
+      name: "Hot Water"
+
+# ============ ESSENTIAL SENSORS ============
+
+sensor:
+  - platform: panasonic_aquarea
+    outside_temp:
+      name: "Outside Temperature"
+    inlet_temp:
+      name: "Inlet Temperature"
+    outlet_temp:
+      name: "Outlet Temperature"
+    dhw_temp:
+      name: "DHW Temperature"
+    compressor_freq:
+      name: "Compressor Frequency"
+
+# ============ STATUS SENSORS ============
+
+binary_sensor:
+  - platform: panasonic_aquarea
+    heatpump_state:
+      name: "Running"
+    defrost_state:
+      name: "Defrost"
+    force_dhw_state:
+      name: "Force DHW"
+
+  - platform: status
+    name: "Status"
+
+text_sensor:
+  - platform: panasonic_aquarea
+    error:
+      name: "Error"
+    operating_mode:
+      name: "Mode"
+
+# ============ CONTROLS ============
+
+switch:
+  - platform: panasonic_aquarea
+    heatpump:
+      name: "Power"
+    force_dhw:
+      name: "Force DHW"
+
+select:
+  - platform: panasonic_aquarea
+    operating_mode:
+      name: "Operating Mode"
+    quiet_mode:
+      name: "Quiet Mode"
+
+number:
+  - platform: panasonic_aquarea
+    dhw_target_temp:
+      name: "DHW Target"
+    z1_heat_target_temp:
+      name: "Heat Target"
+
+button:
+  - platform: restart
+    name: "Restart"
+
+status_led:
+  pin:
+    number: GPIO2
+    inverted: true

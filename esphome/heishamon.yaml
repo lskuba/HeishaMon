@@ -1,0 +1,356 @@
+# ESPHome configuration for Panasonic Aquarea Heat Pump
+# Based on HeishaMon protocol - designed for ESP8266 D1 Mini
+# 
+# Hardware connections (D1 Mini):
+#   - GPIO1 (TX) -> Heat Pump RX (via level shifter 3.3V -> 5V)
+#   - GPIO3 (RX) -> Heat Pump TX (via level shifter 5V -> 3.3V)
+#   - GPIO5 (D1) -> Enable pin (active low for communication)
+#
+# IMPORTANT: You need a level shifter for the serial communication!
+# The heat pump uses 5V TTL logic, while ESP8266 uses 3.3V.
+
+substitutions:
+  device_name: heishamon
+  friendly_name: Panasonic Aquarea Heat Pump
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  comment: "Panasonic Aquarea Heat Pump Controller"
+
+esp8266:
+  board: d1_mini
+
+# Enable logging (Serial1 on GPIO2/D4 for debugging)
+logger:
+  baud_rate: 0  # Disable UART logging as we use Serial for heat pump
+  level: INFO
+
+# Enable Home Assistant API
+api:
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  # Enable fallback hotspot in case wifi connection fails
+  ap:
+    ssid: "${device_name}-Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# Web server for local access
+web_server:
+  port: 80
+
+# UART for heat pump communication
+# HeishaMon PCB uses swapped serial pins:
+# GPIO15 (D8) for TX, GPIO13 (D7) for RX
+uart:
+  id: hp_uart
+  tx_pin: GPIO15
+  rx_pin: GPIO13
+  baud_rate: 9600
+  data_bits: 8
+  parity: EVEN
+  stop_bits: 1
+
+# Include the external component
+external_components:
+  - source:
+      type: local
+      path: components
+
+# Panasonic Aquarea component
+panasonic_aquarea:
+  id: aquarea
+  uart_id: hp_uart
+  enable_pin: GPIO5
+  update_interval: 5s
+
+# ============================================================
+# CLIMATE ENTITIES
+# ============================================================
+
+climate:
+  # Zone 1 Climate - House Heating/Cooling
+  - platform: panasonic_aquarea
+    zone1:
+      name: HeatingCooling
+      id: climate_house
+      
+  # DHW Climate - Hot Water
+  - platform: panasonic_aquarea
+    dhw:
+      name: DHWTemperature
+      id: climate_dhw
+
+# ============================================================
+# SENSORS
+# ============================================================
+
+sensor:
+  - platform: panasonic_aquarea
+    # Temperature sensors
+    outside_temp:
+      name: "Outside Temperature"
+      id: outside_temp
+    inlet_temp:
+      name: "Inlet Temperature"
+      id: inlet_temp
+    outlet_temp:
+      name: "Outlet Temperature"
+      id: outlet_temp
+    dhw_temp:
+      name: "DHW Temperature"
+      id: dhw_temp
+    dhw_target_temp:
+      name: "DHW Target Temperature"
+      id: dhw_target_temp
+    z1_water_temp:
+      name: "Zone 1 Water Temperature"
+      id: z1_water_temp
+    z2_water_temp:
+      name: "Zone 2 Water Temperature"
+      id: z2_water_temp
+    z1_target_temp:
+      name: "Zone 1 Target Temperature"
+      id: z1_target_temp
+    z2_target_temp:
+      name: "Zone 2 Target Temperature"
+      id: z2_target_temp
+    z1_room_temp:
+      name: "Zone 1 Room Temperature"
+      id: z1_room_temp
+    z2_room_temp:
+      name: "Zone 2 Room Temperature"
+      id: z2_room_temp
+    discharge_temp:
+      name: "Discharge Temperature"
+      id: discharge_temp
+    outside_pipe_temp:
+      name: "Outside Pipe Temperature"
+      id: outside_pipe_temp
+    defrost_temp:
+      name: "Defrost Temperature"
+      id: defrost_temp
+    eva_outlet_temp:
+      name: "Eva Outlet Temperature"
+      id: eva_outlet_temp
+    bypass_outlet_temp:
+      name: "Bypass Outlet Temperature"
+      id: bypass_outlet_temp
+    ipm_temp:
+      name: "IPM Temperature"
+      id: ipm_temp
+      
+    # Compressor and pump sensors
+    compressor_freq:
+      name: "Compressor Frequency"
+      id: compressor_freq
+    pump_flow:
+      name: "Pump Flow"
+      id: pump_flow
+    pump_speed:
+      name: "Pump Speed"
+      id: pump_speed
+    pump_duty:
+      name: "Pump Duty"
+      id: pump_duty
+      
+    # Power sensors
+    heat_power_production:
+      name: "Heat Power Production"
+      id: heat_power_production
+    heat_power_consumption:
+      name: "Heat Power Consumption"
+      id: heat_power_consumption
+    dhw_power_production:
+      name: "DHW Power Production"
+      id: dhw_power_production
+    dhw_power_consumption:
+      name: "DHW Power Consumption"
+      id: dhw_power_consumption
+      
+    # Pressure sensors
+    high_pressure:
+      name: "High Pressure"
+      id: high_pressure
+    low_pressure:
+      name: "Low Pressure"
+      id: low_pressure
+      
+    # Other sensors
+    compressor_current:
+      name: "Compressor Current"
+      id: compressor_current
+    fan1_speed:
+      name: "Fan 1 Speed"
+      id: fan1_speed
+    fan2_speed:
+      name: "Fan 2 Speed"
+      id: fan2_speed
+    operations_hours:
+      name: "Operations Hours"
+      id: operations_hours
+    operations_counter:
+      name: "Operations Counter"
+      id: operations_counter
+
+  # WiFi signal sensor
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+  # Uptime sensor
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+# ============================================================
+# BINARY SENSORS
+# ============================================================
+
+binary_sensor:
+  - platform: panasonic_aquarea
+    heatpump_state:
+      name: "Heatpump Running"
+      id: heatpump_running
+    defrost_state:
+      name: "Defrost Active"
+      id: defrost_active
+    dhw_heater_state:
+      name: "DHW Heater Enabled"
+      id: dhw_heater_enabled
+    room_heater_state:
+      name: "Room Heater Enabled"
+      id: room_heater_enabled
+    internal_heater_state:
+      name: "Internal Heater Active"
+      id: internal_heater_active
+    external_heater_state:
+      name: "External Heater Active"
+      id: external_heater_active
+    force_dhw_state:
+      name: "Force DHW Active"
+      id: force_dhw_active
+    holiday_mode:
+      name: "Holiday Mode"
+      id: holiday_mode_active
+    threeway_valve:
+      name: "3-Way Valve (DHW)"
+      id: threeway_valve
+
+  # Status sensor
+  - platform: status
+    name: "Status"
+
+# ============================================================
+# TEXT SENSORS
+# ============================================================
+
+text_sensor:
+  - platform: panasonic_aquarea
+    error:
+      name: "Error Code"
+      id: error_code
+    operating_mode:
+      name: "Operating Mode"
+      id: operating_mode_text
+    heatpump_model:
+      name: "Heatpump Model"
+      id: heatpump_model
+      
+  # Version sensor
+  - platform: version
+    name: "ESPHome Version"
+
+# ============================================================
+# SWITCHES
+# ============================================================
+
+switch:
+  - platform: panasonic_aquarea
+    heatpump:
+      name: "Heatpump Power"
+      id: heatpump_power
+    force_dhw:
+      name: "Force DHW"
+      id: force_dhw_switch
+    holiday_mode:
+      name: "Holiday Mode"
+      id: holiday_mode_switch
+    force_defrost:
+      name: "Force Defrost"
+      id: force_defrost_switch
+    force_sterilization:
+      name: "Force Sterilization"
+      id: force_sterilization_switch
+
+  # Restart switch
+  - platform: restart
+    name: "Restart"
+
+# ============================================================
+# SELECTS
+# ============================================================
+
+select:
+  - platform: panasonic_aquarea
+    operating_mode:
+      name: "Operating Mode"
+      id: operating_mode_select
+    quiet_mode:
+      name: "Quiet Mode"
+      id: quiet_mode_select
+    powerful_mode:
+      name: "Powerful Mode"
+      id: powerful_mode_select
+
+# ============================================================
+# NUMBERS (Temperature Setpoints)
+# ============================================================
+
+number:
+  - platform: panasonic_aquarea
+    dhw_target_temp:
+      name: "DHW Target Temperature"
+      id: dhw_target_temp_number
+    z1_heat_target_temp:
+      name: "Zone 1 Heat Target Temperature"
+      id: z1_heat_target_temp_number
+    z1_cool_target_temp:
+      name: "Zone 1 Cool Target Temperature"
+      id: z1_cool_target_temp_number
+    z2_heat_target_temp:
+      name: "Zone 2 Heat Target Temperature"
+      id: z2_heat_target_temp_number
+    z2_cool_target_temp:
+      name: "Zone 2 Cool Target Temperature"
+      id: z2_cool_target_temp_number
+
+# ============================================================
+# BUTTONS (Actions)
+# ============================================================
+
+button:
+  - platform: restart
+    name: "Restart Device"
+    
+  - platform: safe_mode
+    name: "Safe Mode"
+
+# ============================================================
+# STATUS LED
+# ============================================================
+
+status_led:
+  pin:
+    number: GPIO2
+    inverted: true
