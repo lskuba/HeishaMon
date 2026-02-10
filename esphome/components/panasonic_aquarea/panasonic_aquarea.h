@@ -148,9 +148,12 @@ class PanasonicAquarea : public PollingComponent, public uart::UARTDevice {
   // Buffer for serial data
   std::vector<uint8_t> rx_buffer_;
   uint32_t last_rx_time_{0};
+  uint32_t query_sent_time_{0};
   bool waiting_for_response_{false};
   bool initialized_{false};
   uint8_t init_retry_count_{0};
+  uint8_t consecutive_timeouts_{0};
+  uint32_t next_query_time_{0};
 
   // Decoded values
   bool heatpump_state_{false};

@@ -72,7 +72,7 @@ panasonic_aquarea:
   id: aquarea
   uart_id: hp_uart
   enable_pin: GPIO5
-  update_interval: 5s
+  update_interval: 10s  # Increased from 5s to reduce load
 
 # ============================================================
 # CLIMATE ENTITIES

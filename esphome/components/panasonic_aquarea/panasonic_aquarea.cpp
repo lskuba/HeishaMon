@@ -59,26 +59,100 @@ void PanasonicAquarea::dump_config() {
 }
 
 void PanasonicAquarea::loop() {
-  // Read available data from UART
-  while (this->available()) {
+  // Read available data from UART with buffer size protection
+  while (this->available() && this->rx_buffer_.size() < 512) {
     uint8_t byte;
     this->read_byte(&byte);
     this->rx_buffer_.push_back(byte);
     this->last_rx_time_ = millis();
+    yield();  // Prevent watchdog timeout
+  }
+
+  // Check if buffer is growing with invalid data
+  if (this->rx_buffer_.size() > 10 && this->rx_buffer_[0] != 0x71 && this->rx_buffer_[0] != 0x31) {
+    ESP_LOGW(TAG, "Invalid header byte 0x%02X, flushing buffer", this->rx_buffer_[0]);
+    this->rx_buffer_.clear();
+    // Flush UART buffer
+    while (this->available()) {
+      uint8_t dummy;
+      this->read_byte(&dummy);
+      yield();
+    }
+    return;
   }
 
   // Check if we have a complete message (timeout based)
-  if (!this->rx_buffer_.empty() && (millis() - this->last_rx_time_ > 100)) {
+  uint32_t now = millis();
+  if (!this->rx_buffer_.empty() && (now - this->last_rx_time_ > 100)) {
     // Process received data
     if (this->rx_buffer_.size() >= DATASIZE) {
       this->decode_data_(this->rx_buffer_.data(), this->rx_buffer_.size());
       this->waiting_for_response_ = false;
+      this->consecutive_timeouts_ = 0;  // Reset on successful receive
+    } else if (this->rx_buffer_.size() > DATASIZE) {
+      ESP_LOGW(TAG, "Buffer overflow, discarding %d bytes", this->rx_buffer_.size());
     }
     this->rx_buffer_.clear();
+  }
+  
+  // Reset timeout if waiting too long for response (5 seconds after query sent)
+  if (this->waiting_for_response_ && this->query_sent_time_ > 0 && (now - this->query_sent_time_ > 5000)) {
+    ESP_LOGW(TAG, "Response timeout, resetting");
+    this->waiting_for_response_ = false;
+    this->rx_buffer_.clear();
+    this->query_sent_time_ = 0;  // Clear stale timer
+    this->consecutive_timeouts_++;
+    
+    // Flush UART buffer on timeout
+    while (this->available()) {
+      uint8_t dummy;
+      this->read_byte(&dummy);
+      yield();
+    }
+    
+    // Exponential backoff: wait longer after repeated timeouts
+    if (this->consecutive_timeouts_ > 3) {
+      uint8_t backoff_shift = this->consecutive_timeouts_ - 3;
+      if (backoff_shift > 4) backoff_shift = 4;  // Cap at 16 seconds
+      uint32_t backoff_ms = 1000 * (1 << backoff_shift);
+      this->next_query_time_ = now + backoff_ms;
+      ESP_LOGW(TAG, "Multiple timeouts (%d), backing off for %d ms", this->consecutive_timeouts_, backoff_ms);
+    }
+    
+    // Hard reset after too many consecutive failures
+    if (this->consecutive_timeouts_ >= 10) {
+      ESP_LOGE(TAG, "Too many consecutive timeouts (%d), performing hard reset", this->consecutive_timeouts_);
+      this->rx_buffer_.clear();
+      // Flush UART completely
+      while (this->available()) {
+        uint8_t dummy;
+        this->read_byte(&dummy);
+        yield();
+      }
+      this->flush();
+      // Reset state
+      this->consecutive_timeouts_ = 0;
+      this->waiting_for_response_ = false;
+      this->query_sent_time_ = 0;
+      this->next_query_time_ = now + 5000;  // Wait 5 seconds before retry
+      this->initialized_ = false;  // Force reinitialization
+    }
   }
 }
 
 void PanasonicAquarea::update() {
+  // Don't send new query if still waiting for response
+  if (this->waiting_for_response_) {
+    return;
+  }
+  
+  // Check if we're in backoff period
+  uint32_t now = millis();
+  if (this->next_query_time_ > 0 && now < this->next_query_time_) {
+    return;  // Still in backoff period
+  }
+  this->next_query_time_ = 0;  // Clear backoff
+  
   if (!this->initialized_) {
     ESP_LOGI(TAG, "Sending initial query to heat pump...");
     this->send_initial_query_();
@@ -98,6 +172,7 @@ void PanasonicAquarea::send_initial_query_() {
   cmd[INITIAL_QUERY_SIZE] = this->calculate_checksum_(cmd, INITIAL_QUERY_SIZE);
   
   this->write_array(cmd, INITIAL_QUERY_SIZE + 1);
+  this->query_sent_time_ = millis();
   this->waiting_for_response_ = true;
 }
 
@@ -107,6 +182,7 @@ void PanasonicAquarea::send_query_() {
   cmd[PANASONIC_QUERY_SIZE] = this->calculate_checksum_(cmd, PANASONIC_QUERY_SIZE);
   
   this->write_array(cmd, PANASONIC_QUERY_SIZE + 1);
+  this->query_sent_time_ = millis();
   this->waiting_for_response_ = true;
 }
 
@@ -615,8 +691,13 @@ void AquareaClimate::control(const climate::ClimateCall &call) {
 void AquareaClimate::update_state() {
   if (this->parent_ == nullptr) return;
 
-  // Update current temperature from zone
-  this->current_temperature = this->parent_->get_z1_water_temp();
+  // Update current temperature from zone - use room temp if available, else water temp
+  float room_temp = this->parent_->get_z1_current_temp();
+  if (room_temp > -127 && room_temp < 100) {  // Valid room temp range
+    this->current_temperature = room_temp;
+  } else {
+    this->current_temperature = this->parent_->get_z1_water_temp();
+  }
   this->target_temperature = this->parent_->get_z1_target_temp();
 
   // Update mode based on heatpump state and operating mode
