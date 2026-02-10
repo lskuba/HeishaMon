@@ -40,6 +40,7 @@ async def to_code(config):
         await cg.register_component(var, conf)
         cg.add(var.set_parent(parent))
         cg.add(var.set_select_type("operating_mode"))
+        cg.add(parent.set_operating_mode_select(var))
 
     if CONF_QUIET_MODE_SELECT in config:
         conf = config[CONF_QUIET_MODE_SELECT]
@@ -50,6 +51,7 @@ async def to_code(config):
         await cg.register_component(var, conf)
         cg.add(var.set_parent(parent))
         cg.add(var.set_select_type("quiet_mode"))
+        cg.add(parent.set_quiet_mode_select(var))
 
     if CONF_POWERFUL_MODE_SELECT in config:
         conf = config[CONF_POWERFUL_MODE_SELECT]
@@ -60,3 +62,4 @@ async def to_code(config):
         await cg.register_component(var, conf)
         cg.add(var.set_parent(parent))
         cg.add(var.set_select_type("powerful_mode"))
+        cg.add(parent.set_powerful_mode_select(var))

@@ -7,11 +7,6 @@ namespace panasonic_aquarea {
 
 static const char *const TAG = "panasonic_aquarea";
 
-// Initial query to start communication
-const uint8_t PanasonicAquarea::initial_query_[INITIAL_QUERY_SIZE] = {
-  0x31, 0x05, 0x10, 0x01, 0x00, 0x00, 0x00
-};
-
 // Query to request all data
 const uint8_t PanasonicAquarea::panasonic_query_[PANASONIC_QUERY_SIZE] = {
   0x71, 0x6c, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -51,6 +46,9 @@ void PanasonicAquarea::setup() {
     this->enable_pin_->setup();
     this->enable_pin_->digital_write(true);  // Enable TX to heat pump
   }
+  
+  // Skip initial query - go straight to regular queries
+  this->initialized_ = true;
 }
 
 void PanasonicAquarea::dump_config() {
@@ -153,27 +151,7 @@ void PanasonicAquarea::update() {
   }
   this->next_query_time_ = 0;  // Clear backoff
   
-  if (!this->initialized_) {
-    ESP_LOGI(TAG, "Sending initial query to heat pump...");
-    this->send_initial_query_();
-    this->init_retry_count_++;
-    if (this->init_retry_count_ > 5) {
-      ESP_LOGW(TAG, "Heat pump not responding to initial query, trying regular query...");
-      this->initialized_ = true;
-    }
-  } else {
-    this->send_query_();
-  }
-}
-
-void PanasonicAquarea::send_initial_query_() {
-  uint8_t cmd[INITIAL_QUERY_SIZE + 1];
-  memcpy(cmd, initial_query_, INITIAL_QUERY_SIZE);
-  cmd[INITIAL_QUERY_SIZE] = this->calculate_checksum_(cmd, INITIAL_QUERY_SIZE);
-  
-  this->write_array(cmd, INITIAL_QUERY_SIZE + 1);
-  this->query_sent_time_ = millis();
-  this->waiting_for_response_ = true;
+  this->send_query_();
 }
 
 void PanasonicAquarea::send_query_() {
@@ -212,13 +190,13 @@ std::string PanasonicAquarea::decode_operating_mode_(uint8_t value) {
   switch (mode) {
     case 18: return "Heat only";
     case 19: return "Cool only";
-    case 25: return "Auto (Heat)";
+    case 25: return "Auto";
     case 33: return "DHW only";
-    case 34: return "Heat + DHW";
-    case 35: return "Cool + DHW";
-    case 41: return "Auto (Heat) + DHW";
-    case 26: return "Auto (Cool)";
-    case 42: return "Auto (Cool) + DHW";
+    case 34: return "Heat+DHW";
+    case 35: return "Cool+DHW";
+    case 41: return "Auto+DHW";
+    case 26: return "Auto";
+    case 42: return "Auto+DHW";
     default: return "Unknown";
   }
 }
@@ -266,8 +244,13 @@ void PanasonicAquarea::decode_data_(uint8_t *data, size_t len) {
 
   // Decode operating mode (TOP4) - byte 6
   this->operating_mode_ = data[6] & 0x3F;
+  std::string mode_str = this->decode_operating_mode_(data[6]);
   if (this->operating_mode_sensor_ != nullptr) {
-    this->operating_mode_sensor_->publish_state(this->decode_operating_mode_(data[6]));
+    this->operating_mode_sensor_->publish_state(mode_str);
+  }
+  // Update operating mode select to match current state
+  if (this->operating_mode_select_ != nullptr) {
+    this->operating_mode_select_->publish_state(mode_str);
   }
 
   // Decode force DHW state (TOP2) - byte 4, bits 1-2

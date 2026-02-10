@@ -25,7 +25,6 @@ class AquareaNumber;
 
 static const uint8_t DATASIZE = 203;
 static const uint8_t PANASONIC_QUERY_SIZE = 110;
-static const uint8_t INITIAL_QUERY_SIZE = 7;
 
 // Operating modes
 enum OperatingMode : uint8_t {
@@ -98,6 +97,11 @@ class PanasonicAquarea : public PollingComponent, public uart::UARTDevice {
   // Text sensor setters
   void set_error_sensor(text_sensor::TextSensor *sensor) { error_sensor_ = sensor; }
   void set_operating_mode_sensor(text_sensor::TextSensor *sensor) { operating_mode_sensor_ = sensor; }
+  
+  // Select setters
+  void set_operating_mode_select(select::Select *sel) { operating_mode_select_ = sel; }
+  void set_quiet_mode_select(select::Select *sel) { quiet_mode_select_ = sel; }
+  void set_powerful_mode_select(select::Select *sel) { powerful_mode_select_ = sel; }
   void set_heatpump_model_sensor(text_sensor::TextSensor *sensor) { heatpump_model_sensor_ = sensor; }
 
   // Climate setters
@@ -133,7 +137,6 @@ class PanasonicAquarea : public PollingComponent, public uart::UARTDevice {
  protected:
   void send_command_(uint8_t *cmd, size_t len);
   void send_query_();
-  void send_initial_query_();
   bool read_response_(uint8_t *data, size_t &len);
   void decode_data_(uint8_t *data, size_t len);
   uint8_t calculate_checksum_(uint8_t *data, size_t len);
@@ -150,8 +153,7 @@ class PanasonicAquarea : public PollingComponent, public uart::UARTDevice {
   uint32_t last_rx_time_{0};
   uint32_t query_sent_time_{0};
   bool waiting_for_response_{false};
-  bool initialized_{false};
-  uint8_t init_retry_count_{0};
+  bool initialized_{true};
   uint8_t consecutive_timeouts_{0};
   uint32_t next_query_time_{0};
 
@@ -220,13 +222,17 @@ class PanasonicAquarea : public PollingComponent, public uart::UARTDevice {
   text_sensor::TextSensor *error_sensor_{nullptr};
   text_sensor::TextSensor *operating_mode_sensor_{nullptr};
   text_sensor::TextSensor *heatpump_model_sensor_{nullptr};
+  
+  // Selects
+  select::Select *operating_mode_select_{nullptr};
+  select::Select *quiet_mode_select_{nullptr};
+  select::Select *powerful_mode_select_{nullptr};
 
   // Climate controllers
   AquareaClimate *zone1_climate_{nullptr};
   AquareaDHWClimate *dhw_climate_{nullptr};
 
   // Command buffer
-  static const uint8_t initial_query_[INITIAL_QUERY_SIZE];
   static const uint8_t panasonic_query_[PANASONIC_QUERY_SIZE];
 };
 
