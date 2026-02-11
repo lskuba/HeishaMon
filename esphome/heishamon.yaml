@@ -311,9 +311,6 @@ select:
 
 number:
   - platform: panasonic_aquarea
-    dhw_target_temp:
-      name: "DHW Target Temperature"
-      id: dhw_target_temp_number
     z1_heat_target_temp:
       name: "Zone 1 Heat Target Temperature"
       id: z1_heat_target_temp_number
